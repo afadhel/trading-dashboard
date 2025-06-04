@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import TrendScoreDisplay from './components/TrendScoreDisplay.tsx';
 import TimeframeCategorizedView from './components/TimeframeCategorizedView.tsx';
 import { EnhancedSymbolData, TimeframeAnalysis } from './types';
@@ -19,45 +19,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
-  // Load symbols on component mount
-  useEffect(() => {
-    loadSymbols();
-    // Set up WebSocket connection
-    try {
-      apiService.connectWebSocket().then(() => {
-        setIsConnected(true);
-        // Set up message handlers
-        apiService.onMessage('signal_update', (data) => {
-          loadSymbols(); // Refresh symbols when new signal arrives
-          if (selectedSymbol && selectedSymbol === data.symbol) {
-            loadTimeframeAnalysis(selectedSymbol); // Refresh analysis for selected symbol
-          }
-        });
-        
-        apiService.onMessage('disconnect', () => {
-          setIsConnected(false);
-        });
-      }).catch((error) => {
-        console.error('WebSocket connection failed:', error);
-        setIsConnected(false);
-      });
-    } catch (error) {
-      console.error('WebSocket setup failed:', error);
-    }
-
-    return () => {
-      apiService.disconnectWebSocket();
-    };
-  }, []);
-
-  // Load timeframe analysis when symbol changes
-  useEffect(() => {
-    if (selectedSymbol) {
-      loadTimeframeAnalysis(selectedSymbol);
-    }
-  }, [selectedSymbol]);
-
-  const loadSymbols = async () => {
+  const loadSymbols = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
@@ -88,9 +50,9 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [selectedSymbol]);
 
-  const loadTimeframeAnalysis = async (symbol: string) => {
+  const loadTimeframeAnalysis = useCallback(async (symbol: string) => {
     try {
       setIsAnalysisLoading(true);
       // For now, create a mock timeframe analysis since the method doesn't exist
@@ -129,7 +91,45 @@ function App() {
     } finally {
       setIsAnalysisLoading(false);
     }
-  };
+  }, []);
+
+  // Load symbols on component mount
+  useEffect(() => {
+    loadSymbols();
+    // Set up WebSocket connection
+    try {
+      apiService.connectWebSocket().then(() => {
+        setIsConnected(true);
+        // Set up message handlers
+        apiService.onMessage('signal_update', (data) => {
+          loadSymbols(); // Refresh symbols when new signal arrives
+          if (selectedSymbol && selectedSymbol === data.symbol) {
+            loadTimeframeAnalysis(selectedSymbol); // Refresh analysis for selected symbol
+          }
+        });
+        
+        apiService.onMessage('disconnect', () => {
+          setIsConnected(false);
+        });
+      }).catch((error) => {
+        console.error('WebSocket connection failed:', error);
+        setIsConnected(false);
+      });
+    } catch (error) {
+      console.error('WebSocket setup failed:', error);
+    }
+
+    return () => {
+      apiService.disconnectWebSocket();
+    };
+  }, [loadSymbols, selectedSymbol, loadTimeframeAnalysis]);
+
+  // Load timeframe analysis when symbol changes
+  useEffect(() => {
+    if (selectedSymbol) {
+      loadTimeframeAnalysis(selectedSymbol);
+    }
+  }, [selectedSymbol, loadTimeframeAnalysis]);
 
   const selectedSymbolData = symbols.find(s => s.symbol === selectedSymbol);
 
