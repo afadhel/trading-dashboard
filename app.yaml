@@ -1,35 +1,11 @@
 name: rhino-trading-dashboard
 region: nyc
 services:
-  # Serverless Functions
-  - name: webhook-receiver
-    source_dir: /functions/webhook-receiver
-    github:
-      repo: your-github-username/trading-dashboard
-      branch: main
-    routes:
-      - path: /webhook
-    environment_slug: node-js
-    instance_count: 1
-    instance_size_slug: basic-xxs
-    
-  - name: api-server
-    source_dir: /functions/api-server
-    github:
-      repo: your-github-username/trading-dashboard
-      branch: main
-    routes:
-      - path: /api
-    environment_slug: node-js
-    instance_count: 1
-    instance_size_slug: basic-xxs
-    http_port: 8080
-    
   # Frontend React App
   - name: frontend
     source_dir: /frontend
     github:
-      repo: your-github-username/trading-dashboard
+      repo: afadhel/trading-dashboard
       branch: main
     build_command: npm run build
     output_dir: /build
@@ -38,6 +14,56 @@ services:
     instance_size_slug: basic-xxs
     routes:
       - path: /
+    envs:
+      - key: REACT_APP_API_URL
+        value: ${APP_URL}/api
+      - key: REACT_APP_WS_URL
+        value: wss://${APP_DOMAIN}/api
+      - key: GENERATE_SOURCEMAP
+        value: "false"
+    
+  # API Server
+  - name: api-server
+    source_dir: /functions/api-server
+    github:
+      repo: afadhel/trading-dashboard
+      branch: main
+    build_command: npm install
+    run_command: node index.js
+    environment_slug: node-js
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    http_port: 8080
+    routes:
+      - path: /api
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: WS_PORT
+        value: "8080"
+      - key: DATABASE_URL
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+        
+  # Webhook Receiver
+  - name: webhook-receiver
+    source_dir: /functions/webhook-receiver
+    github:
+      repo: afadhel/trading-dashboard
+      branch: main
+    build_command: npm install
+    run_command: node index.js
+    environment_slug: node-js
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    routes:
+      - path: /webhook
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
 
 # Database
 databases:
@@ -51,14 +77,12 @@ databases:
 domains:
   - domain: moneywire.io
     type: PRIMARY
+    wildcard: false
   - domain: www.moneywire.io
     type: ALIAS
     
-# Environment Variables
+# Global Environment Variables
 envs:
   - key: NODE_ENV
     value: production
-  - key: REACT_APP_API_URL
-    value: https://moneywire.io/api
-  - key: REACT_APP_WS_URL
-    value: wss://moneywire.io/api 
+    scope: RUN_AND_BUILD_TIME 
