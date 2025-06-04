@@ -1,0 +1,417 @@
+//@version=5
+indicator('RHINO HMM ++ (8TF) with Webhooks', overlay = true)
+
+// == USER INPUT ==
+tableLocation = input.string(defval = 'Top', options = ['Top', 'Bottom'], title = 'Info Table Location', group = 'Display', tooltip = 'Place information table on the top of the pane or the bottom of the pane.')
+
+lookback = input.int(defval = 3, title = 'Pivot Lookback Period', group = 'Pivot Points', tooltip = 'Looks for pivot points within this number of bars both left and right.')
+pivotType = input.string(defval = 'High/Low', title = 'Pivot Type', options = ['High/Low', 'Close'], group = 'Pivot Points', tooltip = 'Choose whether the high/low or close is used for pivot points and trend calcuations.')
+showPivotPoints = input.bool(title = 'Show Historical Pivot Points?', defval = false, group = 'Pivot Points', tooltip = 'Toggle this on to see the historical pivot points that were used.')
+
+oneSet = input.timeframe(defval = '60', title = 'First Timeframe', group = 'Higher Timeframe Levels')
+twoSet = input.timeframe(defval = '240', title = 'Second Timeframe', group = 'Higher Timeframe Levels')
+threeSet = input.timeframe(defval = 'D', title = 'Third Timeframe', group = 'Higher Timeframe Levels')
+fourSet = input.timeframe(defval = 'W', title = 'Fourth Timeframe', group = 'Higher Timeframe Levels')
+fiveSet = input.timeframe(defval = 'M', title = 'Fifth Timeframe', group = 'Higher Timeframe Levels')
+sixSet = input.timeframe(defval = '3M', title = 'Sixth Timeframe', group = 'Higher Timeframe Levels')
+sevenSet = input.timeframe(defval = '6M', title = 'Seventh Timeframe', group = 'Higher Timeframe Levels')
+eightSet = input.timeframe(defval = '12M', title = 'Eighth Timeframe', group = 'Higher Timeframe Levels')
+showMTFLevels = input.bool(title = 'Show Multiple Timeframe S/R Levels?', defval = true, group = 'Higher Timeframe Levels')
+
+// Color inputs
+oneColorS = input.color(color.new(color.orange, 50), title = '1st Timeframe Support', group = 'Higher Timeframe Levels', inline = 'MTF1')
+oneColorR = input.color(color.new(color.orange, 50), title = ' Resistance', group = 'Higher Timeframe Levels', inline = 'MTF1')
+twoColorS = input.color(color.new(color.blue, 50), title = '2nd Timeframe Support', group = 'Higher Timeframe Levels', inline = 'MTF2')
+twoColorR = input.color(color.new(color.blue, 50), title = ' Resistance', group = 'Higher Timeframe Levels', inline = 'MTF2')
+threeColorS = input.color(color.new(color.white, 50), title = '3rd Timeframe Support', group = 'Higher Timeframe Levels', inline = 'MTF3')
+threeColorR = input.color(color.new(color.white, 50), title = ' Resistance', group = 'Higher Timeframe Levels', inline = 'MTF3')
+fourColorS = input.color(color.new(color.red, 50), title = '4th Timeframe Support', group = 'Higher Timeframe Levels', inline = 'MTF4')
+fourColorR = input.color(color.new(color.red, 50), title = ' Resistance', group = 'Higher Timeframe Levels', inline = 'MTF4')
+fiveColorS = input.color(color.new(color.purple, 50), title = '5th Timeframe Support', group = 'Higher Timeframe Levels', inline = 'MTF5')
+fiveColorR = input.color(color.new(color.purple, 50), title = ' Resistance', group = 'Higher Timeframe Levels', inline = 'MTF5')
+sixColorS = input.color(color.new(color.yellow, 50), title = '6th Timeframe Support', group = 'Higher Timeframe Levels', inline = 'MTF6')
+sixColorR = input.color(color.new(color.yellow, 50), title = ' Resistance', group = 'Higher Timeframe Levels', inline = 'MTF6')
+sevenColorS = input.color(color.new(color.lime, 50), title = '7th Timeframe Support', group = 'Higher Timeframe Levels', inline = 'MTF7')
+sevenColorR = input.color(color.new(color.lime, 50), title = ' Resistance', group = 'Higher Timeframe Levels', inline = 'MTF7')
+eightColorS = input.color(color.new(color.aqua, 50), title = '8th Timeframe Support', group = 'Higher Timeframe Levels', inline = 'MTF8')
+eightColorR = input.color(color.new(color.aqua, 50), title = ' Resistance', group = 'Higher Timeframe Levels', inline = 'MTF8')
+levelWidth = input.int(defval = 1, title = 'Line Width (pixels)', group = 'Higher Timeframe Levels')
+
+// == ALERT SETTINGS ==
+enableAlerts = input.bool(title = 'Enable Alerts', defval = true, group = 'Alert Settings')
+alertOnScoreChange = input.bool(title = 'Alert on Any Score Change', defval = true, group = 'Alert Settings', tooltip = 'Send alert whenever the trend score changes (any transition from -8 to +8)')
+alertOnlyOncePerBar = input.bool(title = 'Alert Only Once Per Bar', defval = true, group = 'Alert Settings', tooltip = 'Limit alerts to once per bar to avoid spam')
+
+// == WEBHOOK SETTINGS ==
+enableWebhook = input.bool(title = 'Enable Webhook JSON Alerts', defval = false, group = 'Webhook Settings', tooltip = 'Send JSON formatted alerts to webhook endpoint')
+webhookOnScoreChange = input.bool(title = 'Webhook: Score Changes', defval = true, group = 'Webhook Settings', tooltip = 'Send webhook alert on any score change')
+
+// == GRADIENT SIGNAL SETTINGS ==
+showGradientSignals = input.bool(title = 'Show Gradient Signals', defval = true, group = 'Gradient Signals', tooltip = 'Show numerical signals for any timeframe alignment changes')
+gradientSize = input.string(defval = 'Small', title = 'Signal Size', options = ['Tiny', 'Small', 'Normal', 'Large'], group = 'Gradient Signals')
+gradientPosition = input.string(defval = 'Below Bar', title = 'Signal Position', options = ['Above Bar', 'Below Bar'], group = 'Gradient Signals')
+
+// == DEFINE FUNCTIONS FOR USE IN MULTIPLE TIMEFRAMES ==
+f_getHTF() =>
+    var float ph = na
+    float pl = na
+    float highLevel = na
+    float lowLevel = na
+    
+    if pivotType == 'Close'
+        ph := ta.pivothigh(close, lookback, lookback)
+        pl := ta.pivotlow(close, lookback, lookback)
+        highLevel := ta.valuewhen(bool(ph), close[lookback], 0)
+        lowLevel := ta.valuewhen(bool(pl), close[lookback], 0)
+    else
+        ph := ta.pivothigh(high, lookback, lookback)
+        pl := ta.pivotlow(low, lookback, lookback)
+        highLevel := ta.valuewhen(bool(ph), high[lookback], 0)
+        lowLevel := ta.valuewhen(bool(pl), low[lookback], 0)
+    
+    barsSinceHigh = ta.barssince(bool(ph)) + lookback
+    barsSinceLow = ta.barssince(bool(pl)) + lookback
+    timeSinceHigh = time[barsSinceHigh]
+    timeSinceLow = time[barsSinceLow]
+    
+    [ph, pl, highLevel, lowLevel, barsSinceHigh, barsSinceLow, timeSinceHigh, timeSinceLow]
+
+[ph_01, pl_01, hL_01, lL_01, bsSH_01, bsSL_01, tSH_01, tSL_01] = request.security(syminfo.tickerid, oneSet, f_getHTF())
+[ph_02, pl_02, hL_02, lL_02, bsSH_02, bsSL_02, tSH_02, tSL_02] = request.security(syminfo.tickerid, twoSet, f_getHTF())
+[ph_03, pl_03, hL_03, lL_03, bsSH_03, bsSL_03, tSH_03, tSL_03] = request.security(syminfo.tickerid, threeSet, f_getHTF())
+[ph_04, pl_04, hL_04, lL_04, bsSH_04, bsSL_04, tSH_04, tSL_04] = request.security(syminfo.tickerid, fourSet, f_getHTF())
+[ph_05, pl_05, hL_05, lL_05, bsSH_05, bsSL_05, tSH_05, tSL_05] = request.security(syminfo.tickerid, fiveSet, f_getHTF())
+[ph_06, pl_06, hL_06, lL_06, bsSH_06, bsSL_06, tSH_06, tSL_06] = request.security(syminfo.tickerid, sixSet, f_getHTF())
+[ph_07, pl_07, hL_07, lL_07, bsSH_07, bsSL_07, tSH_07, tSL_07] = request.security(syminfo.tickerid, sevenSet, f_getHTF())
+[ph_08, pl_08, hL_08, lL_08, bsSH_08, bsSL_08, tSH_08, tSL_08] = request.security(syminfo.tickerid, eightSet, f_getHTF())
+
+// Check to ensure timeframes are higher than chart
+tfInMinutes(simple string tf = '') =>
+    float chartTf = timeframe.multiplier * (timeframe.isseconds ? 1. / 60 : timeframe.isminutes ? 1. : timeframe.isdaily ? 60. * 24 : timeframe.isweekly ? 60. * 24 * 7 : timeframe.ismonthly ? 60. * 24 * 30.4375 : na)
+    float result = tf == '' ? chartTf : request.security(syminfo.tickerid, tf, chartTf)
+    result
+
+float chartTFInMinutes = tfInMinutes()
+bool TF1Check = tfInMinutes(oneSet) < chartTFInMinutes
+bool TF2Check = tfInMinutes(twoSet) < chartTFInMinutes
+bool TF3Check = tfInMinutes(threeSet) < chartTFInMinutes
+bool TF4Check = tfInMinutes(fourSet) < chartTFInMinutes
+bool TF5Check = tfInMinutes(fiveSet) < chartTFInMinutes
+bool TF6Check = tfInMinutes(sixSet) < chartTFInMinutes
+bool TF7Check = tfInMinutes(sevenSet) < chartTFInMinutes
+bool TF8Check = tfInMinutes(eightSet) < chartTFInMinutes
+
+// Current timeframe pivots
+var float phC = na
+float plC = na
+
+if pivotType == 'High/Low'
+    phC := ta.pivothigh(high, lookback, lookback)
+    plC := ta.pivotlow(low, lookback, lookback)
+else
+    phC := ta.pivothigh(close, lookback, lookback)
+    plC := ta.pivotlow(close, lookback, lookback)
+
+// Plot historical pivot points
+plot(showPivotPoints ? phC : na, style = plot.style_cross, linewidth = 2, color = color.new(#000000, 50), offset = -lookback)
+plot(showPivotPoints ? plC : na, style = plot.style_cross, linewidth = 2, color = color.new(#000000, 50), offset = -lookback)
+
+// == PLOT SUPPORT/RESISTANCE LINES ==
+f_line(x1, y1, y2, _color) =>
+    var line id = na
+    line.delete(id)
+    id := line.new(x1, y1, time, y2, xloc.bar_time, extend.right, _color, width = levelWidth)
+    id
+
+// Support/Resistance lines for all timeframes
+highLine1 = TF1Check ? na : showMTFLevels ? f_line(tSH_01, hL_01, hL_01, oneColorR) : na
+lowLine1 = TF1Check ? na : showMTFLevels ? f_line(tSL_01, lL_01, lL_01, oneColorS) : na
+highLine2 = TF2Check ? na : showMTFLevels ? f_line(tSH_02, hL_02, hL_02, twoColorR) : na
+lowLine2 = TF2Check ? na : showMTFLevels ? f_line(tSL_02, lL_02, lL_02, twoColorS) : na
+highLine3 = TF3Check ? na : showMTFLevels ? f_line(tSH_03, hL_03, hL_03, threeColorR) : na
+lowLine3 = TF3Check ? na : showMTFLevels ? f_line(tSL_03, lL_03, lL_03, threeColorS) : na
+highLine4 = TF4Check ? na : showMTFLevels ? f_line(tSH_04, hL_04, hL_04, fourColorR) : na
+lowLine4 = TF4Check ? na : showMTFLevels ? f_line(tSL_04, lL_04, lL_04, fourColorS) : na
+highLine5 = TF5Check ? na : showMTFLevels ? f_line(tSH_05, hL_05, hL_05, fiveColorR) : na
+lowLine5 = TF5Check ? na : showMTFLevels ? f_line(tSL_05, lL_05, lL_05, fiveColorS) : na
+highLine6 = TF6Check ? na : showMTFLevels ? f_line(tSH_06, hL_06, hL_06, sixColorR) : na
+lowLine6 = TF6Check ? na : showMTFLevels ? f_line(tSL_06, lL_06, lL_06, sixColorS) : na
+highLine7 = TF7Check ? na : showMTFLevels ? f_line(tSH_07, hL_07, hL_07, sevenColorR) : na
+lowLine7 = TF7Check ? na : showMTFLevels ? f_line(tSL_07, lL_07, lL_07, sevenColorS) : na
+highLine8 = TF8Check ? na : showMTFLevels ? f_line(tSH_08, hL_08, hL_08, eightColorR) : na
+lowLine8 = TF8Check ? na : showMTFLevels ? f_line(tSL_08, lL_08, lL_08, eightColorS) : na
+
+// == TREND CALCULATIONS ==
+f_signal(highLevel, lowLevel) =>
+    uptrendSignal = high > highLevel
+    downtrendSignal = low < lowLevel
+    inUptrend = bool(na)
+    inDowntrend = bool(na)
+    inUptrend := uptrendSignal[1] ? true : downtrendSignal[1] ? false : inUptrend[1]
+    inDowntrend := not inUptrend
+    [uptrendSignal, downtrendSignal, inUptrend, inDowntrend]
+
+[uptrendSignal1, downtrendSignal1, inUptrend1, inDowntrend1] = f_signal(hL_01, lL_01)
+[uptrendSignal2, downtrendSignal2, inUptrend2, inDowntrend2] = f_signal(hL_02, lL_02)
+[uptrendSignal3, downtrendSignal3, inUptrend3, inDowntrend3] = f_signal(hL_03, lL_03)
+[uptrendSignal4, downtrendSignal4, inUptrend4, inDowntrend4] = f_signal(hL_04, lL_04)
+[uptrendSignal5, downtrendSignal5, inUptrend5, inDowntrend5] = f_signal(hL_05, lL_05)
+[uptrendSignal6, downtrendSignal6, inUptrend6, inDowntrend6] = f_signal(hL_06, lL_06)
+[uptrendSignal7, downtrendSignal7, inUptrend7, inDowntrend7] = f_signal(hL_07, lL_07)
+[uptrendSignal8, downtrendSignal8, inUptrend8, inDowntrend8] = f_signal(hL_08, lL_08)
+
+// == ALERT LOGIC ==
+// Count active timeframes and their trends
+activeTimeframes = 0
+uptrendCount = 0
+downtrendCount = 0
+
+if not TF1Check
+    activeTimeframes := activeTimeframes + 1
+    if inUptrend1
+        uptrendCount := uptrendCount + 1
+    else
+        downtrendCount := downtrendCount + 1
+
+if not TF2Check
+    activeTimeframes := activeTimeframes + 1
+    if inUptrend2
+        uptrendCount := uptrendCount + 1
+    else
+        downtrendCount := downtrendCount + 1
+
+if not TF3Check
+    activeTimeframes := activeTimeframes + 1
+    if inUptrend3
+        uptrendCount := uptrendCount + 1
+    else
+        downtrendCount := downtrendCount + 1
+
+if not TF4Check
+    activeTimeframes := activeTimeframes + 1
+    if inUptrend4
+        uptrendCount := uptrendCount + 1
+    else
+        downtrendCount := downtrendCount + 1
+
+if not TF5Check
+    activeTimeframes := activeTimeframes + 1
+    if inUptrend5
+        uptrendCount := uptrendCount + 1
+    else
+        downtrendCount := downtrendCount + 1
+
+if not TF6Check
+    activeTimeframes := activeTimeframes + 1
+    if inUptrend6
+        uptrendCount := uptrendCount + 1
+    else
+        downtrendCount := downtrendCount + 1
+
+if not TF7Check
+    activeTimeframes := activeTimeframes + 1
+    if inUptrend7
+        uptrendCount := uptrendCount + 1
+    else
+        downtrendCount := downtrendCount + 1
+
+if not TF8Check
+    activeTimeframes := activeTimeframes + 1
+    if inUptrend8
+        uptrendCount := uptrendCount + 1
+    else
+        downtrendCount := downtrendCount + 1
+
+// Calculate trend score (-8 to +8 based on alignment)
+trendScore = uptrendCount - downtrendCount
+
+// Alert conditions - Score change detection
+scoreChanged = trendScore != trendScore[1]
+
+// Alert messages for score changes
+f_getScoreDescription(score) =>
+    switch score
+        -8 => "🔴 EXTREME BEAR: All 8 timeframes bearish"
+        -7 => "🟠 STRONG BEAR: 7 bearish, 1 bullish"
+        -6 => "🟡 BEARISH: 6 bearish, 2 bullish"
+        -5 => "🟡 BEARISH or UPCOMING REVERSAL: 5 bearish, 3 bullish"
+        0 => "⚪ NEUTRAL, REVERSAL, or PULLBACK: 4 bearish, 4 bullish"
+        5 => "🟢 BULLISH or UPCOMING REVERSAL: 3 bearish, 5 bullish"
+        6 => "🟢 BULLISH: 2 bearish, 6 bullish"
+        7 => "🟢 STRONG BULL: 1 bearish, 7 bullish"
+        8 => "🟢 EXTREME BULL: All 8 timeframes bullish"
+        => "INVALID SCORE"
+
+scoreChangeMsg = "📊 TREND SCORE CHANGE\n" + 
+                 "Previous: " + str.tostring(trendScore[1]) + " → Current: " + str.tostring(trendScore) + "\n" +
+                 f_getScoreDescription(trendScore) + "\n" +
+                 "Active TFs: " + str.tostring(activeTimeframes) + " | Up: " + str.tostring(uptrendCount) + " | Down: " + str.tostring(downtrendCount)
+
+// == FIRE ALERTS ==
+if enableAlerts and alertOnScoreChange and scoreChanged
+    if alertOnlyOncePerBar
+        alert(scoreChangeMsg, alert.freq_once_per_bar)
+    else
+        alert(scoreChangeMsg, alert.freq_all)
+
+// == WEBHOOK JSON ALERTS ==
+// Helper function to get timeframe status
+f_getTfStatus(tfCheck, inUptrend) =>
+    tfCheck ? 'INACTIVE' : inUptrend ? 'UP' : 'DOWN'
+
+if enableWebhook and webhookOnScoreChange and scoreChanged
+    // Determine trend direction
+    trendDirection = trendScore > 0 ? 'UP' : trendScore < 0 ? 'DOWN' : 'NEUTRAL'
+    
+    // Determine pattern
+    pattern = trendScore == 8 ? 'EXTREME_BULLISH' : 
+              trendScore == 7 ? 'STRONG_BULLISH' : 
+              trendScore == 6 ? 'BULLISH' : 
+              trendScore == 5 ? 'BULLISH_REVERSAL' : 
+              trendScore == 0 ? 'NEUTRAL' : 
+              trendScore == -5 ? 'BEARISH_REVERSAL' : 
+              trendScore == -6 ? 'BEARISH' : 
+              trendScore == -7 ? 'STRONG_BEARISH' : 
+              trendScore == -8 ? 'EXTREME_BEARISH' : 'INVALID'
+
+    // Build timeframes object
+    timeframesJson = '{"tf1":{"period":"' + oneSet + '","status":"' + f_getTfStatus(TF1Check, inUptrend1) + '","support_level":' + str.tostring(lL_01) + ',"resistance_level":' + str.tostring(hL_01) + '},' +
+                     '"tf2":{"period":"' + twoSet + '","status":"' + f_getTfStatus(TF2Check, inUptrend2) + '","support_level":' + str.tostring(lL_02) + ',"resistance_level":' + str.tostring(hL_02) + '},' +
+                     '"tf3":{"period":"' + threeSet + '","status":"' + f_getTfStatus(TF3Check, inUptrend3) + '","support_level":' + str.tostring(lL_03) + ',"resistance_level":' + str.tostring(hL_03) + '},' +
+                     '"tf4":{"period":"' + fourSet + '","status":"' + f_getTfStatus(TF4Check, inUptrend4) + '","support_level":' + str.tostring(lL_04) + ',"resistance_level":' + str.tostring(hL_04) + '},' +
+                     '"tf5":{"period":"' + fiveSet + '","status":"' + f_getTfStatus(TF5Check, inUptrend5) + '","support_level":' + str.tostring(lL_05) + ',"resistance_level":' + str.tostring(hL_05) + '},' +
+                     '"tf6":{"period":"' + sixSet + '","status":"' + f_getTfStatus(TF6Check, inUptrend6) + '","support_level":' + str.tostring(lL_06) + ',"resistance_level":' + str.tostring(hL_06) + '},' +
+                     '"tf7":{"period":"' + sevenSet + '","status":"' + f_getTfStatus(TF7Check, inUptrend7) + '","support_level":' + str.tostring(lL_07) + ',"resistance_level":' + str.tostring(hL_07) + '},' +
+                     '"tf8":{"period":"' + eightSet + '","status":"' + f_getTfStatus(TF8Check, inUptrend8) + '","support_level":' + str.tostring(lL_08) + ',"resistance_level":' + str.tostring(hL_08) + '"}}'
+
+    // Build complete JSON payload
+    webhookPayload = '{"signal":"SCORE_CHANGE","symbol":"' + syminfo.ticker + '","timestamp":"' + str.format_time(time, 'yyyy-MM-dd\'T\'HH:mm:ss\'Z\'', 'GMT') + '","price":' + str.tostring(close) + ',"trend_score":' + str.tostring(trendScore) + ',"previous_score":' + str.tostring(trendScore[1]) + ',"pattern":"' + pattern + '","trend":"' + trendDirection + '","timeframes":' + timeframesJson + ',"alignment":{"total_active":' + str.tostring(activeTimeframes) + ',"uptrend_count":' + str.tostring(uptrendCount) + ',"downtrend_count":' + str.tostring(downtrendCount) + ',"score_description":"' + f_getScoreDescription(trendScore) + '"},"chart_timeframe":"' + timeframe.period + '"}'
+
+    // Send webhook
+    if alertOnlyOncePerBar
+        alert(webhookPayload, alert.freq_once_per_bar)
+    else
+        alert(webhookPayload, alert.freq_all)
+
+// == GRADIENT SIGNAL LOGIC ==
+// Detect any change in timeframe alignment
+prevUptrendCount = uptrendCount[1]
+prevDowntrendCount = downtrendCount[1]
+alignmentChanged = uptrendCount != prevUptrendCount or downtrendCount != prevDowntrendCount
+
+// Get position for signals
+signalLocation = gradientPosition == 'Above Bar' ? location.abovebar : location.belowbar
+
+// Create conditions for each valid gradient score (only valid scores)
+gradientMinus8 = showGradientSignals and alignmentChanged and uptrendCount == 0 and downtrendCount == 8
+gradientMinus7 = showGradientSignals and alignmentChanged and uptrendCount == 1 and downtrendCount == 7
+gradientMinus6 = showGradientSignals and alignmentChanged and uptrendCount == 2 and downtrendCount == 6
+gradientMinus5 = showGradientSignals and alignmentChanged and uptrendCount == 3 and downtrendCount == 5
+gradientZero = showGradientSignals and alignmentChanged and uptrendCount == 4 and downtrendCount == 4
+gradientPlus5 = showGradientSignals and alignmentChanged and uptrendCount == 5 and downtrendCount == 3
+gradientPlus6 = showGradientSignals and alignmentChanged and uptrendCount == 6 and downtrendCount == 2
+gradientPlus7 = showGradientSignals and alignmentChanged and uptrendCount == 7 and downtrendCount == 1
+gradientPlus8 = showGradientSignals and alignmentChanged and uptrendCount == 8 and downtrendCount == 0
+
+// Create size conditions
+isTiny = gradientSize == 'Tiny'
+isSmall = gradientSize == 'Small'
+isNormal = gradientSize == 'Normal'
+isLarge = gradientSize == 'Large'
+
+// Plot gradient signals for each score and size combination
+// -8 signals (Red)
+plotchar(gradientMinus8 and isTiny ? close : na, title = '-8 (Tiny)', location = signalLocation, char = '8', color = color.red, size = size.tiny, textcolor = color.red)
+plotchar(gradientMinus8 and isSmall ? close : na, title = '-8 (Small)', location = signalLocation, char = '8', color = color.red, size = size.small, textcolor = color.red)
+plotchar(gradientMinus8 and isNormal ? close : na, title = '-8 (Normal)', location = signalLocation, char = '8', color = color.red, size = size.normal, textcolor = color.red)
+plotchar(gradientMinus8 and isLarge ? close : na, title = '-8 (Large)', location = signalLocation, char = '8', color = color.red, size = size.large, textcolor = color.red)
+
+// -7 signals (Orange)  
+plotchar(gradientMinus7 and isTiny ? close : na, title = '-7 (Tiny)', location = signalLocation, char = '7', color = color.orange, size = size.tiny, textcolor = color.orange)
+plotchar(gradientMinus7 and isSmall ? close : na, title = '-7 (Small)', location = signalLocation, char = '7', color = color.orange, size = size.small, textcolor = color.orange)
+plotchar(gradientMinus7 and isNormal ? close : na, title = '-7 (Normal)', location = signalLocation, char = '7', color = color.orange, size = size.normal, textcolor = color.orange)
+plotchar(gradientMinus7 and isLarge ? close : na, title = '-7 (Large)', location = signalLocation, char = '7', color = color.orange, size = size.large, textcolor = color.orange)
+
+// -6 signals (Yellow)
+plotchar(gradientMinus6 and isTiny ? close : na, title = '-6 (Tiny)', location = signalLocation, char = '6', color = color.orange, size = size.tiny, textcolor = color.orange)
+plotchar(gradientMinus6 and isSmall ? close : na, title = '-6 (Small)', location = signalLocation, char = '6', color = color.orange, size = size.small, textcolor = color.orange)
+plotchar(gradientMinus6 and isNormal ? close : na, title = '-6 (Normal)', location = signalLocation, char = '6', color = color.orange, size = size.normal, textcolor = color.orange)
+plotchar(gradientMinus6 and isLarge ? close : na, title = '-6 (Large)', location = signalLocation, char = '6', color = color.orange, size = size.large, textcolor = color.orange)
+
+// -5 signals (Yellow)
+plotchar(gradientMinus5 and isTiny ? close : na, title = '-5 (Tiny)', location = signalLocation, char = '5', color = color.orange, size = size.tiny, textcolor = color.orange)
+plotchar(gradientMinus5 and isSmall ? close : na, title = '-5 (Small)', location = signalLocation, char = '5', color = color.orange, size = size.small, textcolor = color.orange)
+plotchar(gradientMinus5 and isNormal ? close : na, title = '-5 (Normal)', location = signalLocation, char = '5', color = color.orange, size = size.normal, textcolor = color.orange)
+plotchar(gradientMinus5 and isLarge ? close : na, title = '-5 (Large)', location = signalLocation, char = '5', color = color.orange, size = size.large, textcolor = color.orange)
+
+// 0 signals (Gray - neutral)
+plotchar(gradientZero and isTiny ? close : na, title = '0 (Tiny)', location = signalLocation, char = '0', color = color.gray, size = size.tiny, textcolor = color.gray)
+plotchar(gradientZero and isSmall ? close : na, title = '0 (Small)', location = signalLocation, char = '0', color = color.gray, size = size.small, textcolor = color.gray)
+plotchar(gradientZero and isNormal ? close : na, title = '0 (Normal)', location = signalLocation, char = '0', color = color.gray, size = size.normal, textcolor = color.gray)
+plotchar(gradientZero and isLarge ? close : na, title = '0 (Large)', location = signalLocation, char = '0', color = color.gray, size = size.large, textcolor = color.gray)
+
+// +5 signals (Light Green)
+plotchar(gradientPlus5 and isTiny ? close : na, title = '+5 (Tiny)', location = signalLocation, char = '5', color = color.lime, size = size.tiny, textcolor = color.lime)
+plotchar(gradientPlus5 and isSmall ? close : na, title = '+5 (Small)', location = signalLocation, char = '5', color = color.lime, size = size.small, textcolor = color.lime)
+plotchar(gradientPlus5 and isNormal ? close : na, title = '+5 (Normal)', location = signalLocation, char = '5', color = color.lime, size = size.normal, textcolor = color.lime)
+plotchar(gradientPlus5 and isLarge ? close : na, title = '+5 (Large)', location = signalLocation, char = '5', color = color.lime, size = size.large, textcolor = color.lime)
+
+// +6 signals (Green)
+plotchar(gradientPlus6 and isTiny ? close : na, title = '+6 (Tiny)', location = signalLocation, char = '6', color = color.green, size = size.tiny, textcolor = color.green)
+plotchar(gradientPlus6 and isSmall ? close : na, title = '+6 (Small)', location = signalLocation, char = '6', color = color.green, size = size.small, textcolor = color.green)
+plotchar(gradientPlus6 and isNormal ? close : na, title = '+6 (Normal)', location = signalLocation, char = '6', color = color.green, size = size.normal, textcolor = color.green)
+plotchar(gradientPlus6 and isLarge ? close : na, title = '+6 (Large)', location = signalLocation, char = '6', color = color.green, size = size.large, textcolor = color.green)
+
+// +7 signals (Green)
+plotchar(gradientPlus7 and isTiny ? close : na, title = '+7 (Tiny)', location = signalLocation, char = '7', color = color.green, size = size.tiny, textcolor = color.green)
+plotchar(gradientPlus7 and isSmall ? close : na, title = '+7 (Small)', location = signalLocation, char = '7', color = color.green, size = size.small, textcolor = color.green)
+plotchar(gradientPlus7 and isNormal ? close : na, title = '+7 (Normal)', location = signalLocation, char = '7', color = color.green, size = size.normal, textcolor = color.green)
+plotchar(gradientPlus7 and isLarge ? close : na, title = '+7 (Large)', location = signalLocation, char = '7', color = color.green, size = size.large, textcolor = color.green)
+
+// +8 signals (Dark Green)
+plotchar(gradientPlus8 and isTiny ? close : na, title = '+8 (Tiny)', location = signalLocation, char = '8', color = color.rgb(0, 100, 0), size = size.tiny, textcolor = color.rgb(0, 100, 0))
+plotchar(gradientPlus8 and isSmall ? close : na, title = '+8 (Small)', location = signalLocation, char = '8', color = color.rgb(0, 100, 0), size = size.small, textcolor = color.rgb(0, 100, 0))
+plotchar(gradientPlus8 and isNormal ? close : na, title = '+8 (Normal)', location = signalLocation, char = '8', color = color.rgb(0, 100, 0), size = size.normal, textcolor = color.rgb(0, 100, 0))
+plotchar(gradientPlus8 and isLarge ? close : na, title = '+8 (Large)', location = signalLocation, char = '8', color = color.rgb(0, 100, 0), size = size.large, textcolor = color.rgb(0, 100, 0))
+
+// == TREND TABLE PLOTTING ==
+tablePos = tableLocation == 'Top' ? position.top_right : position.bottom_right
+var table trendTable = table.new(tablePos, 8, 1, border_width = 3)
+upColor = color.rgb(38, 166, 154)
+downColor = color.rgb(240, 83, 80)
+tfColor = color.new(#999999, 0)
+
+f_fillCell(_column, _row, _cellText, _c_color) =>
+    table.cell(trendTable, _column, _row, _cellText, bgcolor = color.new(_c_color, 70), text_color = _c_color, width = 6)
+
+// Define glyphs
+glyph1 = TF1Check ? na : inUptrend1 ? '▲ ' : '▼ '
+glyph2 = TF2Check ? na : inUptrend2 ? '▲ ' : '▼ '
+glyph3 = TF3Check ? na : inUptrend3 ? '▲ ' : '▼ '
+glyph4 = TF4Check ? na : inUptrend4 ? '▲ ' : '▼ '
+glyph5 = TF5Check ? na : inUptrend5 ? '▲ ' : '▼ '
+glyph6 = TF6Check ? na : inUptrend6 ? '▲ ' : '▼ '
+glyph7 = TF7Check ? na : inUptrend7 ? '▲ ' : '▼ '
+glyph8 = TF8Check ? na : inUptrend8 ? '▲ ' : '▼ '
+
+if barstate.islast
+    f_fillCell(0, 0, glyph1 + oneSet, TF1Check ? tfColor : inUptrend1 ? upColor : downColor)
+    f_fillCell(1, 0, glyph2 + twoSet, TF2Check ? tfColor : inUptrend2 ? upColor : downColor)
+    f_fillCell(2, 0, glyph3 + threeSet, TF3Check ? tfColor : inUptrend3 ? upColor : downColor)
+    f_fillCell(3, 0, glyph4 + fourSet, TF4Check ? tfColor : inUptrend4 ? upColor : downColor)
+    f_fillCell(4, 0, glyph5 + fiveSet, TF5Check ? tfColor : inUptrend5 ? upColor : downColor)
+    f_fillCell(5, 0, glyph6 + sixSet, TF6Check ? tfColor : inUptrend6 ? upColor : downColor)
+    f_fillCell(6, 0, glyph7 + sevenSet, TF7Check ? tfColor : inUptrend7 ? upColor : downColor)
+    f_fillCell(7, 0, glyph8 + eightSet, TF8Check ? tfColor : inUptrend8 ? upColor : downColor)
+
+// Plot legacy signals for compatibility (keeping original alert markers)
+plotshape(scoreChanged and trendScore == 8 ? 1 : na, title = 'All Bullish Alert', location = location.abovebar, color = color.rgb(0, 100, 0), style = shape.triangleup, size = size.small)
+plotshape(scoreChanged and trendScore == -8 ? 1 : na, title = 'All Bearish Alert', location = location.abovebar, color = color.red, style = shape.triangledown, size = size.small)
+plotshape(scoreChanged and trendScore == 7 ? 1 : na, title = '7+ Bullish Alert', location = location.abovebar, color = color.green, style = shape.diamond, size = size.small)
+plotshape(scoreChanged and trendScore == -7 ? 1 : na, title = '7+ Bearish Alert', location = location.abovebar, color = color.orange, style = shape.diamond, size = size.small)
+plotshape(scoreChanged and trendScore == 6 ? 1 : na, title = '6+ Bullish Alert', location = location.abovebar, color = color.green, style = shape.circle, size = size.small)
+plotshape(scoreChanged and trendScore == -6 ? 1 : na, title = '6+ Bearish Alert', location = location.abovebar, color = color.orange, style = shape.circle, size = size.small)
+plotshape(scoreChanged and trendScore == 5 ? 1 : na, title = '5+ Bullish Alert', location = location.abovebar, color = color.lime, style = shape.square, size = size.small)
+plotshape(scoreChanged and trendScore == -5 ? 1 : na, title = '5+ Bearish Alert', location = location.abovebar, color = color.orange, style = shape.square, size = size.small) 
+plotchar(gradientMinus6 and isSmall ? close : na, title = '-6 (Small)', location = signalLocation, char = '6', color = color.orange, size = size.small, textcolor = color.orange)
+plotchar(gradientMinus6 and isNormal ? close : na, title = '-6 (Normal)', location = signalLocation, char = '6', color = color.orange, size = size.tiny, textcolor = color.orange)

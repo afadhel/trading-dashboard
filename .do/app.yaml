@@ -1,0 +1,48 @@
+name: rhino-trading-dashboard
+services:
+- name: frontend
+  source_dir: /frontend
+  github:
+    repo: your-username/rhino-trading-dashboard
+    branch: main
+  run_command: npm start
+  build_command: npm run build
+  environment_slug: node-js
+  instance_count: 1
+  instance_size_slug: basic-xxs
+  routes:
+  - path: /
+  envs:
+  - key: REACT_APP_API_URL
+    value: ${api.PUBLIC_URL}
+  - key: REACT_APP_WS_URL
+    value: ${api.PUBLIC_URL}
+  - key: NODE_ENV
+    value: production
+
+- name: api
+  source_dir: /
+  github:
+    repo: your-username/rhino-trading-dashboard
+    branch: main
+  run_command: node server.js
+  build_command: npm install
+  environment_slug: node-js
+  instance_count: 1
+  instance_size_slug: basic-xxs
+  routes:
+  - path: /api
+  envs:
+  - key: DATABASE_URL
+    value: ${db.DATABASE_URL}
+  - key: NODE_ENV
+    value: production
+  - key: WS_PORT
+    value: 8080
+
+databases:
+- name: db
+  engine: PG
+  version: "14"
+  size: basic-xs
+  num_nodes: 1 

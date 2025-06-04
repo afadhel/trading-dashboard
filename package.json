@@ -1,0 +1,33 @@
+{
+  "name": "rhino-trading-dashboard",
+  "version": "1.0.0",
+  "description": "Real-time trading dashboard for RHINO multi-timeframe analysis",
+  "main": "index.js",
+  "scripts": {
+    "dev": "cd frontend && npm start",
+    "build": "cd frontend && npm run build",
+    "deploy-functions": "doctl serverless deploy functions",
+    "deploy-frontend": "cd frontend && npm run build && doctl apps create --spec .do/app.yaml",
+    "setup-db": "node database/setup.js",
+    "test": "jest"
+  },
+  "keywords": ["trading", "dashboard", "webhook", "digitalocean", "pine-script"],
+  "author": "RHINO Trading Team",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "ws": "^8.14.2",
+    "pg": "^8.11.3",
+    "redis": "^4.6.10",
+    "uuid": "^9.0.1",
+    "joi": "^17.11.0",
+    "moment": "^2.29.4",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.2"
+  }
+} 

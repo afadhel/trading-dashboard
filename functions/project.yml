@@ -1,0 +1,41 @@
+project:
+  name: rhino-trading-functions
+  environment:
+    DATABASE_URL: "postgresql://username:password@host:port/database"
+    NODE_ENV: "production"
+    WS_PORT: "8080"
+
+packages:
+  - name: webhook-handler
+    functions:
+      - name: webhook-receiver
+        runtime: nodejs:18
+        main: index.js
+        memory: 128
+        timeout: 30000
+        environment:
+          DATABASE_URL: ${DATABASE_URL}
+          NODE_ENV: ${NODE_ENV}
+        web: true
+        
+      - name: api-server
+        runtime: nodejs:18
+        main: index.js
+        memory: 256
+        timeout: 30000
+        environment:
+          DATABASE_URL: ${DATABASE_URL}
+          NODE_ENV: ${NODE_ENV}
+          WS_PORT: ${WS_PORT}
+        web: true
+
+  - name: maintenance
+    functions:
+      - name: cleanup-stale-data
+        runtime: nodejs:18
+        main: index.js
+        memory: 128
+        timeout: 60000
+        environment:
+          DATABASE_URL: ${DATABASE_URL}
+        schedule: "0 2 * * *"  # Run daily at 2 AM 

@@ -1,0 +1,21 @@
+{
+  "name": "rhino-api-server",
+  "version": "1.0.0",
+  "description": "DigitalOcean Function providing REST API and WebSocket server for RHINO trading dashboard",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "pg": "^8.11.3",
+    "ws": "^8.14.2",
+    "http": "^0.0.1-security"
+  },
+  "keywords": ["trading", "api", "websocket", "rhino", "dashboard"],
+  "author": "RHINO Trading",
+  "license": "MIT"
+} 

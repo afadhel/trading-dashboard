@@ -1,0 +1,64 @@
+name: rhino-trading-dashboard
+region: nyc
+services:
+  # Serverless Functions
+  - name: webhook-receiver
+    source_dir: /functions/webhook-receiver
+    github:
+      repo: your-github-username/trading-dashboard
+      branch: main
+    routes:
+      - path: /webhook
+    environment_slug: node-js
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    
+  - name: api-server
+    source_dir: /functions/api-server
+    github:
+      repo: your-github-username/trading-dashboard
+      branch: main
+    routes:
+      - path: /api
+    environment_slug: node-js
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    http_port: 8080
+    
+  # Frontend React App
+  - name: frontend
+    source_dir: /frontend
+    github:
+      repo: your-github-username/trading-dashboard
+      branch: main
+    build_command: npm run build
+    output_dir: /build
+    environment_slug: node-js
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    routes:
+      - path: /
+
+# Database
+databases:
+  - engine: PG
+    name: rhino-trading-db
+    production: true
+    version: "14"
+    size: db-s-1vcpu-1gb
+
+# Domain Configuration
+domains:
+  - domain: moneywire.io
+    type: PRIMARY
+  - domain: www.moneywire.io
+    type: ALIAS
+    
+# Environment Variables
+envs:
+  - key: NODE_ENV
+    value: production
+  - key: REACT_APP_API_URL
+    value: https://moneywire.io/api
+  - key: REACT_APP_WS_URL
+    value: wss://moneywire.io/api 
